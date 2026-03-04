@@ -221,14 +221,32 @@ func handleMerge(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	out, err = runGitCommand(req.Path, "switch", "--detach", "HEAD")
-	logStep("git switch --detach HEAD", out, err)
+	// Tenta abortar qualquer merge que tenha ficado pendente (ex: conflito em execução anterior)
+	outAb, errAb := runGitCommand(req.Path, "merge", "--abort")
+	if errAb == nil {
+		logStep("git merge --abort", outAb, nil)
+	}
 
-	out, err = runGitCommand(req.Path, "branch", "-D", "quality-assurance")
+	// Força a limpeza de qualquer alteração pendente (arquivos modificados e untracked)
+	outRes, _ := runGitCommand(req.Path, "reset", "--hard", "HEAD")
+	logStep("git reset --hard HEAD", outRes, nil)
+
+	outClean, _ := runGitCommand(req.Path, "clean", "-fd")
+	logStep("git clean -fd", outClean, nil)
+
+	// Desanexa o HEAD para podermos recriar a branch sem travas
+	out, err = runGitCommand(req.Path, "switch", "--detach", "HEAD")
+	err = logStep("git switch --detach HEAD", out, err)
+	if err != nil {
+		return
+	}
+
+	out, _ = runGitCommand(req.Path, "branch", "-D", "quality-assurance")
 	logStep("git branch -D quality-assurance", out, nil)
 
-	out, err = runGitCommand(req.Path, "checkout", "-b", "quality-assurance", baseBranch)
-	err = logStep(fmt.Sprintf("git checkout -b quality-assurance %s", baseBranch), out, err)
+	// Força a criação da branch baseada no target (ignorando o que tinha lá com -f)
+	out, err = runGitCommand(req.Path, "checkout", "-f", "-B", "quality-assurance", baseBranch)
+	err = logStep(fmt.Sprintf("git checkout -f -B quality-assurance %s", baseBranch), out, err)
 	if err != nil {
 		return
 	}

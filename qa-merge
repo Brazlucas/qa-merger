@@ -1,0 +1,16 @@
+#!/bin/bash
+# Builder e Runner do QA Merger
+
+BINARY_NAME="qa-merger-bin"
+
+echo "🔧 Compilando QA Merger UI..."
+go build -o $BINARY_NAME main.go
+
+if [ $? -eq 0 ]; then
+    echo "✅ Compilação concluída!"
+    echo "🚀 Iniciando servidor..."
+    ./$BINARY_NAME
+else
+    echo "❌ Erro ao compilar o projeto."
+    exit 1
+fi

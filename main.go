@@ -2,17 +2,20 @@ package main
 
 import (
 	"bytes"
+	"embed"
+	"encoding/json"
 	"fmt"
+	"io/fs"
+	"log"
+	"net/http"
 	"os/exec"
+	"runtime"
 	"strings"
-
-	"fyne.io/fyne/v2"
-	"fyne.io/fyne/v2/app"
-	"fyne.io/fyne/v2/container"
-	"fyne.io/fyne/v2/dialog"
-	"fyne.io/fyne/v2/layout"
-	"fyne.io/fyne/v2/widget"
+	"time"
 )
+
+//go:embed static/*
+var staticFiles embed.FS
 
 func runGitCommand(dir string, args ...string) (string, error) {
 	cmd := exec.Command("git", args...)
@@ -25,86 +28,174 @@ func runGitCommand(dir string, args ...string) (string, error) {
 }
 
 func main() {
-	a := app.New()
-	w := a.NewWindow("QA Merger - Auto Merge")
-	w.Resize(fyne.NewSize(750, 600))
-
-	var selectedProject string
-
-	projectLabel := widget.NewLabel("Nenhum projeto selecionado")
-	projectLabel.TextStyle = fyne.TextStyle{Bold: true}
-
-	// 1. Target Branch (Autocomplete Select)
-	targetBranchSelect := widget.NewSelectEntry([]string{})
-	targetBranchSelect.PlaceHolder = "-- Buscar e selecionar branch remota --"
-
-	// 2. Base Branch (Select with 2 options)
-	baseBranchSelect := widget.NewSelect([]string{"develop", "master"}, nil)
-	baseBranchSelect.SetSelected("master")
-
-	// 3. Push checkbox
-	pushCheck := widget.NewCheck("Efetuar Push (Remote)", nil)
-	pushCheck.Checked = false
-
-	// Log Output
-	logOutput := widget.NewMultiLineEntry()
-	logOutput.Wrapping = fyne.TextWrapWord
-	logOutput.Disable()
-	
-	// Add text to log and scroll to bottom
-	appendLog := func(text string) {
-		logOutput.SetText(logOutput.Text + text)
-		// Very simple auto-scroll by moving cursor to end
-		lines := strings.Split(logOutput.Text, "\n")
-		logOutput.CursorRow = len(lines) - 1
-		logOutput.CursorColumn = 0
+	staticFS, err := fs.Sub(staticFiles, "static")
+	if err != nil {
+		log.Fatal(err)
 	}
 
-	fetchBranches := func(dir string) {
-		selectedProject = dir
-		projectLabel.SetText("Projeto: " + dir)
-		logOutput.SetText("> Atualizando fetch e buscando branches ativas remotas...\n")
-		
-		go func() {
-			out, err := runGitCommand(dir, "fetch", "--all", "--prune")
-			if err != nil {
-				appendLog("\nErro no fetch:\n" + out)
+	http.Handle("/", http.FileServer(http.FS(staticFS)))
+
+	http.HandleFunc("/api/browse", handleBrowse)
+	http.HandleFunc("/api/branches", handleBranches)
+	http.HandleFunc("/api/merge", handleMerge)
+
+	port := ":8080"
+	url := "http://localhost" + port
+	fmt.Printf("Servidor QA Merger Web UI iniciado!\nNavegue para %s\n", url)
+
+	go func() {
+		time.Sleep(500 * time.Millisecond) // Give server time to start
+		openBrowser(url)
+	}()
+
+	log.Fatal(http.ListenAndServe(port, nil))
+}
+
+func openBrowser(url string) {
+	var err error
+	switch runtime.GOOS {
+	case "linux":
+		err = exec.Command("xdg-open", url).Start()
+	case "windows":
+		err = exec.Command("rundll32", "url.dll,FileProtocolHandler", url).Start()
+	case "darwin":
+		err = exec.Command("open", url).Start()
+	default:
+		err = fmt.Errorf("unsupported platform")
+	}
+	if err != nil {
+		log.Printf("Erro ao abrir navegador: %v", err)
+	}
+}
+
+func isWSL() bool {
+	if runtime.GOOS == "linux" {
+		out, err := exec.Command("uname", "-r").Output()
+		if err == nil {
+			lowerOut := strings.ToLower(string(out))
+			if strings.Contains(lowerOut, "microsoft") || strings.Contains(lowerOut, "wsl") {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func handleBrowse(w http.ResponseWriter, r *http.Request) {
+	var cmd *exec.Cmd
+	var isPowershellWSL bool
+
+	if isWSL() {
+		psScript := `Add-Type -AssemblyName System.windows.forms; $f=New-Object System.Windows.Forms.FolderBrowserDialog; $f.Description="Selecione o Projeto Front-End"; if ($f.ShowDialog() -eq 'OK') { Write-Output $f.SelectedPath }`
+		cmd = exec.Command("powershell.exe", "-NoProfile", "-Command", psScript)
+		isPowershellWSL = true
+	} else {
+		switch runtime.GOOS {
+		case "linux":
+			if _, err := exec.LookPath("zenity"); err == nil {
+				cmd = exec.Command("zenity", "--file-selection", "--directory", "--title=Selecione o Projeto Front-End")
+			} else if _, err := exec.LookPath("kdialog"); err == nil {
+				cmd = exec.Command("kdialog", "--getexistingdirectory", "/")
+			} else {
+				json.NewEncoder(w).Encode(map[string]interface{}{"error": "Requer zenity ou kdialog para abrir o explorador no Linux"})
 				return
 			}
-			
-			out, err = runGitCommand(dir, "branch", "-r", "--format=%(refname:short)")
-			if err != nil {
-				appendLog("\nErro ao listar branches:\n" + out)
-				return
-			}
-			
-			lines := strings.Split(strings.TrimSpace(out), "\n")
-			var branches []string
-			for _, line := range lines {
-				line = strings.TrimSpace(line)
-				if line == "" || strings.Contains(line, "->") || strings.HasSuffix(line, "/HEAD") {
-					continue
-				}
-				if strings.HasSuffix(line, "/quality-assurance") {
-					continue
-				}
-				branches = append(branches, line)
-			}
-			
-			targetBranchSelect.SetOptions(branches)
-			appendLog(fmt.Sprintf("\n> OK! Encontradas %d branches de origin.\n", len(branches)))
-		}()
+		case "windows":
+			psScript := `Add-Type -AssemblyName System.windows.forms; $f=New-Object System.Windows.Forms.FolderBrowserDialog; $f.Description="Selecione o Projeto Front-End"; if ($f.ShowDialog() -eq 'OK') { Write-Output $f.SelectedPath }`
+			cmd = exec.Command("powershell", "-NoProfile", "-Command", psScript)
+		case "darwin":
+			cmd = exec.Command("osascript", "-e", `tell application "System Events" to activate`, "-e", `tell application "System Events" to return POSIX path of (choose folder with prompt "Selecione o Projeto Front-End")`)
+		default:
+			json.NewEncoder(w).Encode(map[string]interface{}{"error": "Sistema operacional não suportado"})
+			return
+		}
 	}
 
-	// Folder Picker Button
-	selectFolderBtn := widget.NewButton("Selecionar Projeto Front-End", func() {
-		dialog.ShowFolderOpen(func(lu fyne.ListableURI, err error) {
-			if err != nil || lu == nil {
-				return
-			}
-			fetchBranches(lu.Path())
-		}, w)
-	})
+	out, err := cmd.Output()
+	if err != nil {
+		json.NewEncoder(w).Encode(map[string]interface{}{"error": "Seleção cancelada ou falhou"})
+		return
+	}
+
+	path := strings.TrimSpace(string(out))
+	if path == "" {
+		json.NewEncoder(w).Encode(map[string]interface{}{"error": "Nenhum diretório selecionado"})
+		return
+	}
+
+	if isPowershellWSL {
+		pathBytes, err := exec.Command("wslpath", "-u", path).Output()
+		if err == nil {
+			path = strings.TrimSpace(string(pathBytes))
+		}
+	}
+
+	json.NewEncoder(w).Encode(map[string]interface{}{"path": path})
+}
+
+func handleBranches(w http.ResponseWriter, r *http.Request) {
+	path := r.URL.Query().Get("path")
+	if path == "" {
+		json.NewEncoder(w).Encode(map[string]string{"error": "Path is required"})
+		return
+	}
+
+	_, err := runGitCommand(path, "fetch", "--all", "--prune")
+	if err != nil {
+		json.NewEncoder(w).Encode(map[string]interface{}{"error": "Erro no fetch: " + err.Error()})
+		return
+	}
+
+	out, err := runGitCommand(path, "branch", "-r", "--format=%(refname:short)")
+	if err != nil {
+		json.NewEncoder(w).Encode(map[string]interface{}{"error": "Erro ao listar branches: " + err.Error()})
+		return
+	}
+
+	lines := strings.Split(strings.TrimSpace(out), "\n")
+	var branches []string
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.Contains(line, "->") || strings.HasSuffix(line, "/HEAD") {
+			continue
+		}
+		if strings.HasSuffix(line, "/quality-assurance") {
+			continue
+		}
+		branches = append(branches, line)
+	}
+
+	json.NewEncoder(w).Encode(map[string]interface{}{"branches": branches})
+}
+
+type MergeRequest struct {
+	Path         string `json:"path"`
+	TargetBranch string `json:"target_branch"`
+	BaseBranch   string `json:"base_branch"`
+	Push         bool   `json:"push"`
+}
+
+func handleMerge(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var req MergeRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		http.Error(w, "Streaming unsupported", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/plain")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
 
 	logStep := func(step string, out string, err error) error {
 		msg := fmt.Sprintf("==> %s\n%s\n", step, out)
@@ -113,94 +204,53 @@ func main() {
 		} else {
 			msg += "\n"
 		}
-		appendLog(msg)
+		fmt.Fprint(w, msg)
+		flusher.Flush()
 		return err
 	}
 
-	mergeBtn := widget.NewButton("Aprovar e Mesclar em QA", func() {
-		if selectedProject == "" {
-			dialog.ShowInformation("Erro", "Selecione um projeto primeiro.", w)
+	baseBranch := "origin/" + req.BaseBranch
+	targetBranch := req.TargetBranch
+
+	fmt.Fprintf(w, "> Processando projeto em: %s\n", req.Path)
+	flusher.Flush()
+
+	out, err := runGitCommand(req.Path, "fetch", "--all", "--prune")
+	logStep("git fetch --all --prune", out, err)
+	if err != nil {
+		return
+	}
+
+	out, err = runGitCommand(req.Path, "switch", "--detach", "HEAD")
+	logStep("git switch --detach HEAD", out, err)
+
+	out, err = runGitCommand(req.Path, "branch", "-D", "quality-assurance")
+	logStep("git branch -D quality-assurance", out, nil)
+
+	out, err = runGitCommand(req.Path, "checkout", "-b", "quality-assurance", baseBranch)
+	err = logStep(fmt.Sprintf("git checkout -b quality-assurance %s", baseBranch), out, err)
+	if err != nil {
+		return
+	}
+
+	out, err = runGitCommand(req.Path, "merge", "--no-ff", "-m", fmt.Sprintf("Merge %s into quality-assurance", targetBranch), targetBranch)
+	err = logStep(fmt.Sprintf("git merge %s", targetBranch), out, err)
+	if err != nil {
+		fmt.Fprint(w, "\n[SISTEMA] ❌ Falha no merge. Verifique conflitos.\n")
+		flusher.Flush()
+		return
+	}
+
+	if req.Push {
+		out, err = runGitCommand(req.Path, "push", "-f", "origin", "quality-assurance")
+		err = logStep("git push -f origin quality-assurance", out, err)
+		if err != nil {
+			fmt.Fprint(w, "\n[SISTEMA] ❌ Falha no push.\n")
+			flusher.Flush()
 			return
 		}
-		if targetBranchSelect.Text == "" {
-			dialog.ShowInformation("Erro", "Selecione a branch de testes.", w)
-			return
-		}
-		if baseBranchSelect.Selected == "" {
-			dialog.ShowInformation("Erro", "Selecione a origem da QA.", w)
-			return
-		}
+	}
 
-		baseBranch := "origin/" + baseBranchSelect.Selected
-		targetBranch := targetBranchSelect.Text
-		push := pushCheck.Checked
-
-		logOutput.SetText(fmt.Sprintf("[SISTEMA] Iniciando fluxo de Merge em QA...\n- Dir: %s\n- Branch QA Origem: %s\n- Target: %s\n\n", selectedProject, baseBranch, targetBranch))
-
-		go func() {
-			out, err := runGitCommand(selectedProject, "fetch", "--all", "--prune")
-			logStep("git fetch --all --prune", out, err)
-			if err != nil { return }
-
-			out, err = runGitCommand(selectedProject, "switch", "--detach", "HEAD")
-			logStep("git switch --detach HEAD", out, err)
-
-			out, err = runGitCommand(selectedProject, "branch", "-D", "quality-assurance")
-			logStep("git branch -D quality-assurance", out, nil) // ignore error here
-
-			out, err = runGitCommand(selectedProject, "checkout", "-b", "quality-assurance", baseBranch)
-			err = logStep(fmt.Sprintf("git checkout -b quality-assurance %s", baseBranch), out, err)
-			if err != nil { return }
-
-			out, err = runGitCommand(selectedProject, "merge", "--no-ff", "-m", fmt.Sprintf("Merge %s into quality-assurance", targetBranch), targetBranch)
-			err = logStep(fmt.Sprintf("git merge %s", targetBranch), out, err)
-			if err != nil {
-				appendLog("\n[SISTEMA] ❌ Falha no merge. Verifique conflitos.")
-				return
-			}
-
-			if push {
-				out, err = runGitCommand(selectedProject, "push", "-f", "origin", "quality-assurance")
-				err = logStep("git push -f origin quality-assurance", out, err)
-				if err != nil {
-					appendLog("\n[SISTEMA] ❌ Falha no push.")
-					return
-				}
-			}
-
-			appendLog("\n[SISTEMA] 🎉 Merge processado com sucesso!")
-		}()
-	})
-	mergeBtn.Importance = widget.HighImportance
-
-	// Build the form layout
-	form := container.NewVBox(
-		projectLabel,
-		selectFolderBtn,
-		widget.NewSeparator(),
-		widget.NewLabelWithStyle("1. Escolha a Branch de Testes", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
-		targetBranchSelect,
-		widget.NewSeparator(),
-		widget.NewLabelWithStyle("2. Origem da Nova QA", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
-		baseBranchSelect,
-		widget.NewSeparator(),
-		pushCheck,
-		layout.NewSpacer(),
-		mergeBtn,
-	)
-
-	// Build the right log panel
-	logPanel := container.NewBorder(
-		widget.NewLabelWithStyle("Terminal Output", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
-		nil, nil, nil, logOutput,
-	)
-
-	split := container.NewHSplit(
-		container.NewPadded(form),
-		container.NewPadded(logPanel),
-	)
-	split.SetOffset(0.4)
-
-	w.SetContent(split)
-	w.ShowAndRun()
+	fmt.Fprint(w, "\n[SISTEMA] 🎉 Merge processado com sucesso!\n")
+	flusher.Flush()
 }

@@ -1,0 +1,529 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>QA Merger - Auto Merge</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Fira+Code:wght@400;500&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-color: #0f1115;
+            --panel-bg: rgba(255, 255, 255, 0.03);
+            --panel-border: rgba(255, 255, 255, 0.08);
+            --text-main: #e2e8f0;
+            --text-muted: #94a3b8;
+            --primary: #818cf8;
+            --primary-hover: #6366f1;
+            --success: #34d399;
+            --danger: #f87171;
+            --input-bg: #1e2028;
+            --input-border: #334155;
+            --focus-ring: rgba(129, 140, 248, 0.3);
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 2rem;
+            background-image: 
+                radial-gradient(circle at 15% 50%, rgba(99, 102, 241, 0.08), transparent 25%),
+                radial-gradient(circle at 85% 30%, rgba(168, 85, 247, 0.08), transparent 25%);
+        }
+
+        .container {
+            display: grid;
+            grid-template-columns: 400px 1fr;
+            gap: 24px;
+            width: 100%;
+            max-width: 1200px;
+            height: calc(100vh - 4rem);
+            max-height: 800px;
+        }
+
+        .panel {
+            background: var(--panel-bg);
+            border: 1px solid var(--panel-border);
+            border-radius: 16px;
+            padding: 24px;
+            display: flex;
+            flex-direction: column;
+            backdrop-filter: blur(12px);
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+            overflow-y: auto;
+        }
+
+        .panel::-webkit-scrollbar {
+            width: 8px;
+        }
+        .panel::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        .panel::-webkit-scrollbar-thumb {
+            background: var(--panel-border);
+            border-radius: 4px;
+        }
+
+        h1 {
+            font-size: 1.5rem;
+            font-weight: 600;
+            margin-bottom: 2rem;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        h1 svg {
+            width: 28px;
+            height: 28px;
+            color: var(--primary);
+        }
+
+        .form-group {
+            margin-bottom: 1.5rem;
+        }
+
+        label {
+            display: block;
+            font-size: 0.875rem;
+            font-weight: 500;
+            color: var(--text-muted);
+            margin-bottom: 0.5rem;
+        }
+
+        input[type="text"], select {
+            width: 100%;
+            background: var(--input-bg);
+            border: 1px solid var(--input-border);
+            color: var(--text-main);
+            padding: 0.75rem 1rem;
+            border-radius: 8px;
+            font-size: 0.875rem;
+            font-family: 'Inter', sans-serif;
+            transition: all 0.2s ease;
+            outline: none;
+        }
+
+        input[type="text"]:focus, select:focus {
+            border-color: var(--primary);
+            box-shadow: 0 0 0 3px var(--focus-ring);
+        }
+
+        p.help-text {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            margin-top: 0.5rem;
+        }
+
+        .row {
+            display: flex;
+            gap: 12px;
+            align-items: flex-end;
+        }
+
+        button {
+            background: var(--primary);
+            color: white;
+            border: none;
+            padding: 0.75rem 1.5rem;
+            border-radius: 8px;
+            font-weight: 500;
+            font-size: 0.875rem;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            font-family: 'Inter', sans-serif;
+        }
+
+        button:hover {
+            background: var(--primary-hover);
+            transform: translateY(-1px);
+        }
+
+        button:active {
+            transform: translateY(0);
+        }
+
+        button:disabled {
+            background: var(--input-border);
+            color: var(--text-muted);
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .checkbox-wrapper {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-top: 1rem;
+            cursor: pointer;
+        }
+
+        .checkbox-wrapper input[type="checkbox"] {
+            appearance: none;
+            background: var(--input-bg);
+            margin: 0;
+            font: inherit;
+            color: currentColor;
+            width: 1.15em;
+            height: 1.15em;
+            border: 1px solid var(--input-border);
+            border-radius: 4px;
+            display: inline-grid;
+            place-content: center;
+            transition: all 0.2s ease;
+        }
+
+        .checkbox-wrapper input[type="checkbox"]::before {
+            content: "";
+            width: 0.65em;
+            height: 0.65em;
+            clip-path: polygon(14% 44%, 0 65%, 50% 100%, 100% 16%, 80% 0%, 43% 62%);
+            transform: scale(0);
+            background: white;
+            transition: 120ms transform ease-in-out;
+            box-shadow: inset 1em 1em var(--form-control-color);
+        }
+
+        .checkbox-wrapper input[type="checkbox"]:checked {
+            background: var(--primary);
+            border-color: var(--primary);
+        }
+
+        .checkbox-wrapper input[type="checkbox"]:checked::before {
+            transform: scale(1);
+        }
+
+        .btn-large {
+            width: 100%;
+            padding: 1rem;
+            font-size: 1rem;
+            margin-top: auto;
+            background: linear-gradient(135deg, var(--primary), #a855f7);
+        }
+
+        .btn-large:hover {
+            background: linear-gradient(135deg, var(--primary-hover), #9333ea);
+        }
+
+        /* Terminal Styles */
+        .terminal-panel {
+            background: #090a0d;
+            border-radius: 16px;
+            border: 1px solid var(--panel-border);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            box-shadow: inset 0 2px 10px rgba(0, 0, 0, 0.5);
+        }
+
+        .terminal-header {
+            background: rgba(255, 255, 255, 0.02);
+            padding: 12px 20px;
+            border-bottom: 1px solid var(--panel-border);
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .mac-dots {
+            display: flex;
+            gap: 6px;
+        }
+
+        .mac-dot {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+        }
+
+        .mac-dot.red { background: #ff5f56; }
+        .mac-dot.yellow { background: #ffbd2e; }
+        .mac-dot.green { background: #27c93f; }
+
+        .terminal-title {
+            font-family: 'Fira Code', monospace;
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            margin-left: 8px;
+        }
+
+        .terminal-content {
+            flex: 1;
+            padding: 20px;
+            font-family: 'Fira Code', monospace;
+            font-size: 0.875rem;
+            line-height: 1.6;
+            color: #d1d5db;
+            overflow-y: auto;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+
+        .terminal-content .sys { color: var(--primary); }
+        .terminal-content .err { color: var(--danger); }
+        .terminal-content .suc { color: var(--success); }
+
+        .loading-spinner {
+            width: 16px;
+            height: 16px;
+            border: 2px solid rgba(255,255,255,0.3);
+            border-radius: 50%;
+            border-top-color: white;
+            animation: spin 1s linear infinite;
+            display: none;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        @media (max-width: 900px) {
+            .container {
+                grid-template-columns: 1fr;
+                height: auto;
+                max-height: none;
+            }
+            .panel, .terminal-panel {
+                min-height: 400px;
+            }
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <!-- Controls Panel -->
+    <div class="panel">
+        <h1>
+            <svg xmlns="http://www.w3.org/-2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7v8a2 2 0 002 2h6M8 7V5a2 2 0 012-2h4.586a1 1 0 01.707.293l4.414 4.414a1 1 0 01.293.707V15a2 2 0 01-2 2h-2M8 7H6a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2v-2" />
+            </svg>
+            QA Merger
+        </h1>
+
+        <div class="form-group row">
+            <div style="flex: 1;">
+                <label for="projectPath">1. Selecione o Projeto Front-End</label>
+                <div style="display: flex; gap: 8px;">
+                    <input type="text" id="projectPath" placeholder="/home/usuario/meu-projeto" />
+                    <button id="btnBrowse" onclick="browseFolder()" style="background: var(--input-bg); border: 1px solid var(--input-border); color: var(--text-main); padding: 0.75rem;" title="Procurar Pasta">
+                        📂
+                    </button>
+                    <button id="btnFetch" onclick="fetchBranches()">
+                        <div class="loading-spinner" id="fetchSpinner"></div>
+                        Buscar
+                    </button>
+                </div>
+            </div>
+        </div>
+        <p class="help-text" id="projectStatus" style="margin-top: -10px; margin-bottom: 20px;">Nenhum projeto selecionado</p>
+
+        <div class="form-group">
+            <label for="targetBranch">1. Branch de Testes (Sua feature)</label>
+            <select id="targetBranch" disabled>
+                <option value="">-- Buscar e selecionar branch remota --</option>
+            </select>
+        </div>
+
+        <div class="form-group">
+            <label for="baseBranch">2. Origem da Nova QA</label>
+            <select id="baseBranch">
+                <option value="develop">develop</option>
+                <option value="master" selected>master</option>
+            </select>
+        </div>
+
+        <label class="checkbox-wrapper">
+            <input type="checkbox" id="pushCheck">
+            <span style="font-size: 0.875rem; font-weight: 500;">Efetuar Push (Remote)</span>
+        </label>
+
+        <button class="btn-large" id="btnMerge" onclick="startMerge()" disabled>
+            <svg xmlns="http://www.w3.org/-2000/svg" width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
+            </svg>
+            Aprovar e Mesclar em QA
+        </button>
+    </div>
+
+    <!-- Terminal Panel -->
+    <div class="terminal-panel">
+        <div class="terminal-header">
+            <div class="mac-dots">
+                <div class="mac-dot red"></div>
+                <div class="mac-dot yellow"></div>
+                <div class="mac-dot green"></div>
+            </div>
+            <span class="terminal-title">bash -- qa-merger-logs</span>
+        </div>
+        <div class="terminal-content" id="logOutput"></div>
+    </div>
+</div>
+
+<script>
+    const term = document.getElementById('logOutput');
+    const targetBranchSelect = document.getElementById('targetBranch');
+    const projectStatus = document.getElementById('projectStatus');
+    const btnMerge = document.getElementById('btnMerge');
+    const fetchSpinner = document.getElementById('fetchSpinner');
+    const btnFetch = document.getElementById('btnFetch');
+    const btnBrowse = document.getElementById('btnBrowse');
+    const projectPathInput = document.getElementById('projectPath');
+
+    function appendLog(text, type = 'normal') {
+        const span = document.createElement('span');
+        if (type !== 'normal') span.className = type;
+        span.textContent = text;
+        term.appendChild(span);
+        term.scrollTop = term.scrollHeight;
+    }
+
+    appendLog("[SISTEMA] QA Merger Web UI Inicializado.\n", 'sys');
+    appendLog("Para começar, digite o caminho do projeto ou clique na pasta para procurar.\n");
+
+    async function browseFolder() {
+        btnBrowse.disabled = true;
+        try {
+            const res = await fetch('/api/browse');
+            const data = await res.json();
+            if (data.path) {
+                projectPathInput.value = data.path;
+                fetchBranches();
+            } else if (data.error && data.error !== "Seleção cancelada ou falhou") {
+                appendLog(`[ERRO] ${data.error}\n`, 'err');
+            }
+        } catch (err) {
+            appendLog(`[ERRO DE REDE] Falha ao abrir explorador: ${err.message}\n`, 'err');
+        } finally {
+            btnBrowse.disabled = false;
+        }
+    }
+
+    async function fetchBranches() {
+        const path = projectPathInput.value.trim();
+        if (!path) {
+            targetBranchSelect.innerHTML = '<option value="">-- Informe o diretório primeiro --</option>';
+            targetBranchSelect.disabled = true;
+            btnMerge.disabled = true;
+            projectStatus.textContent = '';
+            return;
+        }
+
+        targetBranchSelect.innerHTML = '<option value="">-- Carregando... --</option>';
+        targetBranchSelect.disabled = true;
+        btnMerge.disabled = true;
+        fetchSpinner.style.display = 'block';
+        btnFetch.disabled = true;
+
+        appendLog(`\n> Buscando branches no diretório:\n  ${path}\n`);
+
+        try {
+            const res = await fetch(`/api/branches?path=${encodeURIComponent(path)}`);
+            const data = await res.json();
+
+            if (data.error) {
+                appendLog(`[ERRO] ${data.error}\n`, 'err');
+                projectStatus.textContent = 'Erro ao carregar projeto';
+                projectStatus.style.color = 'var(--danger)';
+            } else {
+                targetBranchSelect.innerHTML = '';
+                if (data.branches && data.branches.length > 0) {
+                    data.branches.forEach(b => {
+                        const opt = document.createElement('option');
+                        opt.value = b;
+                        opt.textContent = b;
+                        targetBranchSelect.appendChild(opt);
+                    });
+                    targetBranchSelect.disabled = false;
+                    btnMerge.disabled = false;
+                    appendLog(`[SISTEMA] Encontradas ${data.branches.length} branches de origin.\n`, 'suc');
+                    projectStatus.textContent = `Projeto carregado: ${path}`;
+                    projectStatus.style.color = 'var(--success)';
+                } else {
+                    targetBranchSelect.innerHTML = '<option value="">-- Nenhuma branch encontrada --</option>';
+                    appendLog(`[AVISO] Nenhuma branch encontrada.\n`, 'err');
+                }
+            }
+        } catch (err) {
+            appendLog(`[ERRO DE REDE] Falha ao comunicar com o servidor: ${err.message}\n`, 'err');
+        } finally {
+            fetchSpinner.style.display = 'none';
+            btnFetch.disabled = false;
+        }
+    }
+
+    function startMerge() {
+        const path = projectPathInput.value.trim();
+        const targetBranch = targetBranchSelect.value;
+        const baseBranch = document.getElementById('baseBranch').value;
+        const push = document.getElementById('pushCheck').checked;
+
+        if (!path || !targetBranch || !baseBranch) return;
+
+        btnMerge.disabled = true;
+        projectPathInput.disabled = true;
+        btnBrowse.disabled = true;
+        btnFetch.disabled = true;
+        targetBranchSelect.disabled = true;
+        document.getElementById('baseBranch').disabled = true;
+        document.getElementById('pushCheck').disabled = true;
+
+        appendLog(`\n--------------------------------------------\n`, 'sys');
+        appendLog(`[SISTEMA] Iniciando fluxo de Merge em QA...\n`, 'sys');
+        appendLog(`- Dir: ${path}\n`);
+        appendLog(`- Branch QA Origem: origin/${baseBranch}\n`);
+        appendLog(`- Target: ${targetBranch}\n`);
+        appendLog(`- Push: ${push ? 'Sim' : 'Não'}\n\n`);
+
+        // Using Server-Sent Events (SSE) / Stream decoding
+        fetch('/api/merge', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                path: path,
+                target_branch: targetBranch,
+                base_branch: baseBranch,
+                push: push
+            })
+        }).then(async res => {
+            const reader = res.body.getReader();
+            const decoder = new TextDecoder('utf-8');
+
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+                const chunk = decoder.decode(value, { stream: true });
+                appendLog(chunk);
+            }
+
+            appendLog(`\n[SISTEMA] Processo concluído.\n`, 'sys');
+        }).catch(err => {
+            appendLog(`\n[ERRO DE REDE] ${err.message}\n`, 'err');
+        }).finally(() => {
+            btnMerge.disabled = false;
+            projectPathInput.disabled = false;
+            btnBrowse.disabled = false;
+            btnFetch.disabled = false;
+            targetBranchSelect.disabled = false;
+            document.getElementById('baseBranch').disabled = false;
+            document.getElementById('pushCheck').disabled = false;
+        });
+    }
+</script>
+
+</body>
+</html>

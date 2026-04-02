@@ -251,7 +251,7 @@ func handleMerge(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	out, err = runGitCommand(req.Path, "merge", "--no-ff", "-m", fmt.Sprintf("Merge %s into quality-assurance", targetBranch), targetBranch)
+	out, err = runGitCommand(req.Path, "merge", "--no-ff", "-X", "theirs", "-m", fmt.Sprintf("Merge %s into quality-assurance", targetBranch), targetBranch)
 	err = logStep(fmt.Sprintf("git merge %s", targetBranch), out, err)
 	if err != nil {
 		fmt.Fprint(w, "\n[SISTEMA] ❌ Falha no merge. Verifique conflitos.\n")

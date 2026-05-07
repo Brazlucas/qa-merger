@@ -4,11 +4,14 @@ import (
 	"bytes"
 	"embed"
 	"encoding/json"
+	"flag"
 	"fmt"
 	"io/fs"
 	"log"
 	"net/http"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"runtime"
 	"strings"
 	"time"
@@ -27,14 +30,113 @@ func runGitCommand(dir string, args ...string) (string, error) {
 	return out.String(), err
 }
 
+func runMerge(req MergeRequest, logFn func(step, out string, err error)) error {
+	baseBranch := "origin/" + req.BaseBranch
+	targetBranch := req.TargetBranch
+
+	step := func(name, out string, err error) error {
+		logFn(name, out, err)
+		return err
+	}
+
+	out, err := runGitCommand(req.Path, "fetch", "--all", "--prune")
+	if err := step("git fetch --all --prune", out, err); err != nil {
+		return err
+	}
+
+	outAb, errAb := runGitCommand(req.Path, "merge", "--abort")
+	if errAb == nil {
+		step("git merge --abort", outAb, nil)
+	}
+
+	outRes, _ := runGitCommand(req.Path, "reset", "--hard", "HEAD")
+	step("git reset --hard HEAD", outRes, nil)
+
+	outClean, _ := runGitCommand(req.Path, "clean", "-fd")
+	step("git clean -fd", outClean, nil)
+
+	out, err = runGitCommand(req.Path, "switch", "--detach", "HEAD")
+	if err := step("git switch --detach HEAD", out, err); err != nil {
+		return err
+	}
+
+	out, _ = runGitCommand(req.Path, "branch", "-D", "quality-assurance")
+	step("git branch -D quality-assurance", out, nil)
+
+	out, err = runGitCommand(req.Path, "checkout", "-f", "-B", "quality-assurance", baseBranch)
+	if err := step(fmt.Sprintf("git checkout -f -B quality-assurance %s", baseBranch), out, err); err != nil {
+		return err
+	}
+
+	out, err = runGitCommand(req.Path, "merge", "--no-ff", "-m", fmt.Sprintf("Merge %s into quality-assurance", targetBranch), targetBranch)
+	if err := step(fmt.Sprintf("git merge %s", targetBranch), out, err); err != nil {
+		return err
+	}
+
+	if req.Push {
+		out, err = runGitCommand(req.Path, "push", "-f", "origin", "quality-assurance")
+		if err := step("git push -f origin quality-assurance", out, err); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
 func main() {
+	projectFlag := flag.String("project", "", "Caminho ou nome do projeto (relativo ao diretório atual)")
+	branchFlag := flag.String("branch", "", "Branch alvo para mergear em quality-assurance")
+	baseFlag := flag.String("base", "master", "Branch base (padrão: master)")
+	pushFlag := flag.Bool("push", false, "Fazer push forçado para origin após o merge")
+	flag.Parse()
+
+	// Modo CLI: executa merge direto no terminal sem abrir o servidor web
+	if *projectFlag != "" && *branchFlag != "" {
+		projectPath := *projectFlag
+		if !filepath.IsAbs(projectPath) {
+			cwd, err := os.Getwd()
+			if err != nil {
+				log.Fatal(err)
+			}
+			projectPath = filepath.Join(cwd, projectPath)
+		}
+
+		targetBranch := *branchFlag
+		if !strings.HasPrefix(targetBranch, "origin/") {
+			targetBranch = "origin/" + targetBranch
+		}
+
+		req := MergeRequest{
+			Path:         projectPath,
+			TargetBranch: targetBranch,
+			BaseBranch:   *baseFlag,
+			Push:         *pushFlag,
+		}
+
+		fmt.Printf("> Projeto: %s\n> Branch: %s → quality-assurance (base: %s)\n\n", projectPath, *branchFlag, *baseFlag)
+
+		err := runMerge(req, func(step, out string, err error) {
+			fmt.Printf("==> %s\n%s\n", step, out)
+			if err != nil {
+				fmt.Printf("ERROR: %v\n\n", err)
+			}
+		})
+
+		if err != nil {
+			fmt.Println("\n❌ Falha no merge. Verifique conflitos.")
+			os.Exit(1)
+		}
+		fmt.Println("\n✅ Merge processado com sucesso!")
+		return
+	}
+
+	// Modo Web: comportamento original
 	staticFS, err := fs.Sub(staticFiles, "static")
 	if err != nil {
 		log.Fatal(err)
 	}
 
 	http.Handle("/", http.FileServer(http.FS(staticFS)))
-
 	http.HandleFunc("/api/browse", handleBrowse)
 	http.HandleFunc("/api/branches", handleBranches)
 	http.HandleFunc("/api/merge", handleMerge)
@@ -44,7 +146,7 @@ func main() {
 	fmt.Printf("Servidor QA Merger Web UI iniciado!\nNavegue para %s\n", url)
 
 	go func() {
-		time.Sleep(500 * time.Millisecond) // Give server time to start
+		time.Sleep(500 * time.Millisecond)
 		openBrowser(url)
 	}()
 
@@ -197,7 +299,10 @@ func handleMerge(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Connection", "keep-alive")
 
-	logStep := func(step string, out string, err error) error {
+	fmt.Fprintf(w, "> Processando projeto em: %s\n", req.Path)
+	flusher.Flush()
+
+	err := runMerge(req, func(step, out string, err error) {
 		msg := fmt.Sprintf("==> %s\n%s\n", step, out)
 		if err != nil {
 			msg += fmt.Sprintf("ERROR: %v\n\n", err)
@@ -206,67 +311,12 @@ func handleMerge(w http.ResponseWriter, r *http.Request) {
 		}
 		fmt.Fprint(w, msg)
 		flusher.Flush()
-		return err
-	}
+	})
 
-	baseBranch := "origin/" + req.BaseBranch
-	targetBranch := req.TargetBranch
-
-	fmt.Fprintf(w, "> Processando projeto em: %s\n", req.Path)
-	flusher.Flush()
-
-	out, err := runGitCommand(req.Path, "fetch", "--all", "--prune")
-	logStep("git fetch --all --prune", out, err)
-	if err != nil {
-		return
-	}
-
-	// Tenta abortar qualquer merge que tenha ficado pendente (ex: conflito em execução anterior)
-	outAb, errAb := runGitCommand(req.Path, "merge", "--abort")
-	if errAb == nil {
-		logStep("git merge --abort", outAb, nil)
-	}
-
-	// Força a limpeza de qualquer alteração pendente (arquivos modificados e untracked)
-	outRes, _ := runGitCommand(req.Path, "reset", "--hard", "HEAD")
-	logStep("git reset --hard HEAD", outRes, nil)
-
-	outClean, _ := runGitCommand(req.Path, "clean", "-fd")
-	logStep("git clean -fd", outClean, nil)
-
-	// Desanexa o HEAD para podermos recriar a branch sem travas
-	out, err = runGitCommand(req.Path, "switch", "--detach", "HEAD")
-	err = logStep("git switch --detach HEAD", out, err)
-	if err != nil {
-		return
-	}
-
-	out, _ = runGitCommand(req.Path, "branch", "-D", "quality-assurance")
-	logStep("git branch -D quality-assurance", out, nil)
-
-	// Força a criação da branch baseada no target (ignorando o que tinha lá com -f)
-	out, err = runGitCommand(req.Path, "checkout", "-f", "-B", "quality-assurance", baseBranch)
-	err = logStep(fmt.Sprintf("git checkout -f -B quality-assurance %s", baseBranch), out, err)
-	if err != nil {
-		return
-	}
-
-	out, err = runGitCommand(req.Path, "merge", "--no-ff", "-m", fmt.Sprintf("Merge %s into quality-assurance", targetBranch), targetBranch)
-	err = logStep(fmt.Sprintf("git merge %s", targetBranch), out, err)
 	if err != nil {
 		fmt.Fprint(w, "\n[SISTEMA] ❌ Falha no merge. Verifique conflitos.\n")
 		flusher.Flush()
 		return
-	}
-
-	if req.Push {
-		out, err = runGitCommand(req.Path, "push", "-f", "origin", "quality-assurance")
-		err = logStep("git push -f origin quality-assurance", out, err)
-		if err != nil {
-			fmt.Fprint(w, "\n[SISTEMA] ❌ Falha no push.\n")
-			flusher.Flush()
-			return
-		}
 	}
 
 	fmt.Fprint(w, "\n[SISTEMA] 🎉 Merge processado com sucesso!\n")

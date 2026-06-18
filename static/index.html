@@ -36,7 +36,7 @@
             align-items: center;
             justify-content: center;
             padding: 2rem;
-            background-image: 
+            background-image:
                 radial-gradient(circle at 15% 50%, rgba(99, 102, 241, 0.08), transparent 25%),
                 radial-gradient(circle at 85% 30%, rgba(168, 85, 247, 0.08), transparent 25%);
         }
@@ -77,7 +77,7 @@
         h1 {
             font-size: 1.5rem;
             font-weight: 600;
-            margin-bottom: 2rem;
+            margin-bottom: 1.25rem;
             display: flex;
             align-items: center;
             gap: 12px;
@@ -87,6 +87,44 @@
             width: 28px;
             height: 28px;
             color: var(--primary);
+        }
+
+        /* Mode Tabs */
+        .mode-tabs {
+            display: flex;
+            gap: 4px;
+            background: var(--input-bg);
+            border-radius: 10px;
+            padding: 4px;
+            margin-bottom: 1.5rem;
+        }
+
+        .tab-btn {
+            flex: 1;
+            padding: 0.55rem 0.5rem;
+            border-radius: 7px;
+            font-size: 0.775rem;
+            font-weight: 500;
+            background: transparent;
+            color: var(--text-muted);
+            border: none;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            font-family: 'Inter', sans-serif;
+            line-height: 1.3;
+            text-align: center;
+        }
+
+        .tab-btn.active {
+            background: var(--primary);
+            color: white;
+            transform: none;
+        }
+
+        .tab-btn:hover:not(.active) {
+            background: rgba(255,255,255,0.06);
+            color: var(--text-main);
+            transform: none;
         }
 
         .form-group {
@@ -219,6 +257,21 @@
             background: linear-gradient(135deg, var(--primary-hover), #9333ea);
         }
 
+        .version-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            background: rgba(52, 211, 153, 0.12);
+            border: 1px solid rgba(52, 211, 153, 0.25);
+            color: var(--success);
+            font-size: 0.72rem;
+            font-weight: 600;
+            padding: 2px 8px;
+            border-radius: 20px;
+            margin-left: 8px;
+            font-family: 'Fira Code', monospace;
+        }
+
         /* Terminal Styles */
         .terminal-panel {
             background: #090a0d;
@@ -309,12 +362,19 @@
     <!-- Controls Panel -->
     <div class="panel">
         <h1>
-            <svg xmlns="http://www.w3.org/-2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7v8a2 2 0 002 2h6M8 7V5a2 2 0 012-2h4.586a1 1 0 01.707.293l4.414 4.414a1 1 0 01.293.707V15a2 2 0 01-2 2h-2M8 7H6a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2v-2" />
             </svg>
             QA Merger
         </h1>
 
+        <!-- Mode Tabs -->
+        <div class="mode-tabs">
+            <button class="tab-btn active" id="tabMerge" onclick="setMode('merge')">Merge Branch</button>
+            <button class="tab-btn" id="tabVersion" onclick="setMode('version')">Versão infocar-report</button>
+        </div>
+
+        <!-- Shared: Project path -->
         <div class="form-group row">
             <div style="flex: 1;">
                 <label for="projectPath">1. Selecione o Projeto Front-End</label>
@@ -332,31 +392,45 @@
         </div>
         <p class="help-text" id="projectStatus" style="margin-top: -10px; margin-bottom: 20px;">Nenhum projeto selecionado</p>
 
-        <div class="form-group">
-            <label for="targetBranch">1. Branch de Testes (Sua feature)</label>
+        <!-- Merge mode: branch select -->
+        <div class="form-group" id="mergeBranchGroup">
+            <label for="targetBranch">2. Branch de Testes (Sua feature)</label>
             <select id="targetBranch" disabled>
                 <option value="">-- Buscar e selecionar branch remota --</option>
             </select>
         </div>
 
-        <div class="form-group">
-            <label for="baseBranch">2. Origem da Nova QA</label>
+        <!-- Merge mode: base branch -->
+        <div class="form-group" id="mergeBaseGroup">
+            <label for="baseBranch">3. Origem da Nova QA</label>
             <select id="baseBranch">
                 <option value="develop">develop</option>
                 <option value="master" selected>master</option>
             </select>
         </div>
 
+        <!-- Version mode: version input -->
+        <div class="form-group" id="versionGroup" style="display: none;">
+            <label for="versionInput">
+                2. Nova versão infocar-report
+                <span class="version-badge" id="currentVersionBadge" style="display: none;"></span>
+            </label>
+            <input type="text" id="versionInput" placeholder="ex: 1.1.37" />
+            <p class="help-text">O branch <strong>develop</strong> será atualizado e o <strong>quality-assurance</strong> recriado a partir dele.</p>
+        </div>
+
+        <!-- Shared: Push checkbox -->
         <label class="checkbox-wrapper">
             <input type="checkbox" id="pushCheck">
             <span style="font-size: 0.875rem; font-weight: 500;">Efetuar Push (Remote)</span>
         </label>
 
-        <button class="btn-large" id="btnMerge" onclick="startMerge()" disabled>
-            <svg xmlns="http://www.w3.org/-2000/svg" width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <!-- Action button -->
+        <button class="btn-large" id="btnAction" onclick="startAction()" disabled>
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
             </svg>
-            Aprovar e Mesclar em QA
+            <span id="btnActionLabel">Aprovar e Mesclar em QA</span>
         </button>
     </div>
 
@@ -378,11 +452,16 @@
     const term = document.getElementById('logOutput');
     const targetBranchSelect = document.getElementById('targetBranch');
     const projectStatus = document.getElementById('projectStatus');
-    const btnMerge = document.getElementById('btnMerge');
+    const btnAction = document.getElementById('btnAction');
+    const btnActionLabel = document.getElementById('btnActionLabel');
     const fetchSpinner = document.getElementById('fetchSpinner');
     const btnFetch = document.getElementById('btnFetch');
     const btnBrowse = document.getElementById('btnBrowse');
     const projectPathInput = document.getElementById('projectPath');
+    const versionInput = document.getElementById('versionInput');
+    const currentVersionBadge = document.getElementById('currentVersionBadge');
+
+    let currentMode = 'merge';
 
     function appendLog(text, type = 'normal') {
         const span = document.createElement('span');
@@ -395,6 +474,53 @@
     appendLog("[SISTEMA] QA Merger Web UI Inicializado.\n", 'sys');
     appendLog("Para começar, digite o caminho do projeto ou clique na pasta para procurar.\n");
 
+    function setMode(mode) {
+        currentMode = mode;
+
+        document.getElementById('tabMerge').classList.toggle('active', mode === 'merge');
+        document.getElementById('tabVersion').classList.toggle('active', mode === 'version');
+
+        document.getElementById('mergeBranchGroup').style.display = mode === 'merge' ? '' : 'none';
+        document.getElementById('mergeBaseGroup').style.display = mode === 'merge' ? '' : 'none';
+        document.getElementById('versionGroup').style.display = mode === 'version' ? '' : 'none';
+        document.getElementById('btnFetch').style.display = mode === 'merge' ? '' : 'none';
+
+        if (mode === 'merge') {
+            btnActionLabel.textContent = 'Aprovar e Mesclar em QA';
+            const hasBranch = targetBranchSelect.value && !targetBranchSelect.disabled;
+            btnAction.disabled = !hasBranch;
+        } else {
+            btnActionLabel.textContent = 'Subir Versão e Atualizar QA';
+            const path = projectPathInput.value.trim();
+            btnAction.disabled = !path;
+            if (path) loadCurrentVersion(path);
+        }
+    }
+
+    async function loadCurrentVersion(path) {
+        currentVersionBadge.style.display = 'none';
+        try {
+            const res = await fetch(`/api/current-version?path=${encodeURIComponent(path)}`);
+            const data = await res.json();
+            if (data.version) {
+                currentVersionBadge.textContent = 'atual: ' + data.version;
+                currentVersionBadge.style.display = 'inline-flex';
+                if (!versionInput.value) {
+                    versionInput.placeholder = 'ex: ' + bumpPatch(data.version);
+                }
+            }
+        } catch (_) {}
+    }
+
+    function bumpPatch(version) {
+        const parts = version.split('.');
+        if (parts.length === 3) {
+            parts[2] = String(parseInt(parts[2], 10) + 1);
+            return parts.join('.');
+        }
+        return version;
+    }
+
     async function browseFolder() {
         btnBrowse.disabled = true;
         try {
@@ -402,7 +528,14 @@
             const data = await res.json();
             if (data.path) {
                 projectPathInput.value = data.path;
-                fetchBranches();
+                if (currentMode === 'merge') {
+                    fetchBranches();
+                } else {
+                    loadCurrentVersion(data.path);
+                    btnAction.disabled = false;
+                    projectStatus.textContent = `Projeto carregado: ${data.path}`;
+                    projectStatus.style.color = 'var(--success)';
+                }
             } else if (data.error && data.error !== "Seleção cancelada ou falhou") {
                 appendLog(`[ERRO] ${data.error}\n`, 'err');
             }
@@ -418,14 +551,14 @@
         if (!path) {
             targetBranchSelect.innerHTML = '<option value="">-- Informe o diretório primeiro --</option>';
             targetBranchSelect.disabled = true;
-            btnMerge.disabled = true;
+            btnAction.disabled = true;
             projectStatus.textContent = '';
             return;
         }
 
         targetBranchSelect.innerHTML = '<option value="">-- Carregando... --</option>';
         targetBranchSelect.disabled = true;
-        btnMerge.disabled = true;
+        btnAction.disabled = true;
         fetchSpinner.style.display = 'block';
         btnFetch.disabled = true;
 
@@ -449,7 +582,7 @@
                         targetBranchSelect.appendChild(opt);
                     });
                     targetBranchSelect.disabled = false;
-                    btnMerge.disabled = false;
+                    btnAction.disabled = false;
                     appendLog(`[SISTEMA] Encontradas ${data.branches.length} branches de origin.\n`, 'suc');
                     projectStatus.textContent = `Projeto carregado: ${path}`;
                     projectStatus.style.color = 'var(--success)';
@@ -466,6 +599,27 @@
         }
     }
 
+    function setUIBusy(busy) {
+        btnAction.disabled = busy;
+        projectPathInput.disabled = busy;
+        btnBrowse.disabled = busy;
+        btnFetch.disabled = busy;
+        targetBranchSelect.disabled = busy;
+        versionInput.disabled = busy;
+        document.getElementById('baseBranch').disabled = busy;
+        document.getElementById('pushCheck').disabled = busy;
+        document.getElementById('tabMerge').disabled = busy;
+        document.getElementById('tabVersion').disabled = busy;
+    }
+
+    function startAction() {
+        if (currentMode === 'merge') {
+            startMerge();
+        } else {
+            startVersionBump();
+        }
+    }
+
     function startMerge() {
         const path = projectPathInput.value.trim();
         const targetBranch = targetBranchSelect.value;
@@ -474,13 +628,7 @@
 
         if (!path || !targetBranch || !baseBranch) return;
 
-        btnMerge.disabled = true;
-        projectPathInput.disabled = true;
-        btnBrowse.disabled = true;
-        btnFetch.disabled = true;
-        targetBranchSelect.disabled = true;
-        document.getElementById('baseBranch').disabled = true;
-        document.getElementById('pushCheck').disabled = true;
+        setUIBusy(true);
 
         appendLog(`\n--------------------------------------------\n`, 'sys');
         appendLog(`[SISTEMA] Iniciando fluxo de Merge em QA...\n`, 'sys');
@@ -489,40 +637,85 @@
         appendLog(`- Target: ${targetBranch}\n`);
         appendLog(`- Push: ${push ? 'Sim' : 'Não'}\n\n`);
 
-        // Using Server-Sent Events (SSE) / Stream decoding
         fetch('/api/merge', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                path: path,
-                target_branch: targetBranch,
-                base_branch: baseBranch,
-                push: push
-            })
+            body: JSON.stringify({ path, target_branch: targetBranch, base_branch: baseBranch, push })
         }).then(async res => {
             const reader = res.body.getReader();
             const decoder = new TextDecoder('utf-8');
-
             while (true) {
                 const { done, value } = await reader.read();
                 if (done) break;
-                const chunk = decoder.decode(value, { stream: true });
-                appendLog(chunk);
+                appendLog(decoder.decode(value, { stream: true }));
             }
-
             appendLog(`\n[SISTEMA] Processo concluído.\n`, 'sys');
         }).catch(err => {
             appendLog(`\n[ERRO DE REDE] ${err.message}\n`, 'err');
         }).finally(() => {
-            btnMerge.disabled = false;
-            projectPathInput.disabled = false;
-            btnBrowse.disabled = false;
-            btnFetch.disabled = false;
+            setUIBusy(false);
+            // re-enable selects according to mode state
             targetBranchSelect.disabled = false;
-            document.getElementById('baseBranch').disabled = false;
-            document.getElementById('pushCheck').disabled = false;
         });
     }
+
+    function startVersionBump() {
+        const path = projectPathInput.value.trim();
+        const version = versionInput.value.trim();
+        const push = document.getElementById('pushCheck').checked;
+
+        if (!path || !version) {
+            appendLog(`[ERRO] Informe o caminho do projeto e a nova versão.\n`, 'err');
+            return;
+        }
+
+        setUIBusy(true);
+
+        appendLog(`\n--------------------------------------------\n`, 'sys');
+        appendLog(`[SISTEMA] Iniciando atualização de versão infocar-report...\n`, 'sys');
+        appendLog(`- Dir: ${path}\n`);
+        appendLog(`- Nova versão: ${version}\n`);
+        appendLog(`- Push: ${push ? 'Sim' : 'Não'}\n\n`);
+
+        fetch('/api/version-bump', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ path, version, push })
+        }).then(async res => {
+            const reader = res.body.getReader();
+            const decoder = new TextDecoder('utf-8');
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+                appendLog(decoder.decode(value, { stream: true }));
+            }
+            appendLog(`\n[SISTEMA] Processo concluído.\n`, 'sys');
+        }).catch(err => {
+            appendLog(`\n[ERRO DE REDE] ${err.message}\n`, 'err');
+        }).finally(() => {
+            setUIBusy(false);
+            // refresh current version badge
+            if (path) loadCurrentVersion(path);
+        });
+    }
+
+    // Enable version bump button when user types a version
+    versionInput.addEventListener('input', () => {
+        if (currentMode === 'version') {
+            btnAction.disabled = !versionInput.value.trim() || !projectPathInput.value.trim();
+        }
+    });
+
+    // Also enable when path is typed manually in version mode
+    projectPathInput.addEventListener('change', () => {
+        if (currentMode === 'version') {
+            const path = projectPathInput.value.trim();
+            if (path) {
+                loadCurrentVersion(path);
+                btnAction.disabled = !versionInput.value.trim();
+            }
+        }
+    });
 </script>
 
 </body>

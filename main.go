@@ -304,8 +304,6 @@ func handleCurrentVersion(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(map[string]string{"error": "dependência @huby/infocar-report não encontrada"})
 		return
 	}
-	version = strings.TrimPrefix(version, "^")
-
 	json.NewEncoder(w).Encode(map[string]string{"version": version})
 }
 
@@ -403,7 +401,7 @@ func handleVersionBump(w http.ResponseWriter, r *http.Request) {
 	}
 
 	versionRe := regexp.MustCompile(`("@huby/infocar-report"\s*:\s*)"[^"]*"`)
-	newContent := versionRe.ReplaceAllString(string(content), `$1"^`+req.Version+`"`)
+	newContent := versionRe.ReplaceAllString(string(content), `$1"`+req.Version+`"`)
 
 	if err := os.WriteFile(pkgPath, []byte(newContent), 0644); err != nil {
 		fmt.Fprintf(w, "==> Erro ao escrever package.json: %v\n\n", err)
